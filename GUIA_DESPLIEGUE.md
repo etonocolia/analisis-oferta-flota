@@ -129,17 +129,16 @@ https://TU_USUARIO-streamlit-analisis-oferta-flota-XXXXXX.streamlit.app
 
 ### **Error: "ModuleNotFoundError"**
 
-Si falta una librería, crea un archivo `requirements.txt` en tu repositorio:
+Verifica que la dependencia esté declarada en `requirements.txt` y que el archivo esté en la raíz del repositorio. Las dependencias actuales son:
 
 ```txt
 streamlit>=1.28.0
 pandas>=2.0.0
-numpy>=1.24.0
 plotly>=5.18.0
 openpyxl>=3.1.0
 ```
 
-Sube este archivo al repositorio y Streamlit instalará las dependencias automáticamente.
+Sube el archivo al repositorio; Streamlit instalará las dependencias automáticamente durante el despliegue.
 
 ### **Error: "FileNotFoundError"**
 
