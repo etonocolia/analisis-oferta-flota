@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from datetime import datetime
 
 # Configuración de la página
@@ -30,9 +27,18 @@ def cargar_datos():
 # Cargar datos
 try:
     df = cargar_datos()
-    st.success(f"✅ Datos cargados exitosamente: {len(df)} registros")
+    st.caption(f"Datos disponibles: {len(df)} registros")
 except Exception as e:
     st.error(f"Error al cargar datos: {e}")
+    st.stop()
+
+columnas_requeridas = [
+    'Year', 'Trimestre', 'Mes', 'Nombre del mes', 'COD RUTA', 'RUTA',
+    'TIPO DE VEHICULO', 'EMPRESAS', 'MATERIAL PLAN', 'FECHA', 'PARTNER'
+]
+columnas_faltantes = [columna for columna in columnas_requeridas if columna not in df.columns]
+if columnas_faltantes:
+    st.error(f"Faltan columnas requeridas en el Excel: {', '.join(columnas_faltantes)}")
     st.stop()
 
 # Sidebar con filtros
@@ -108,6 +114,10 @@ df_filtrado = df[
 st.sidebar.markdown("---")
 st.sidebar.info(f"**Registros filtrados:** {len(df_filtrado)}")
 
+if df_filtrado.empty:
+    st.warning("No hay registros para los filtros seleccionados. Ajusta los filtros para ver el análisis.")
+    st.stop()
+
 # Métricas principales (KPIs)
 st.header("📈 Métricas Principales")
 
@@ -169,7 +179,7 @@ with col_temporal1:
         color_discrete_sequence=px.colors.qualitative.Set2
     )
     fig_mes.update_layout(showlegend=False)
-    st.plotly_chart(fig_mes, use_container_width=True)
+    st.plotly_chart(fig_mes, width='stretch')
 
 with col_temporal2:
     # Servicios por trimestre
@@ -186,7 +196,7 @@ with col_temporal2:
         color_discrete_sequence=px.colors.qualitative.Set2
     )
     fig_trimestre.update_layout(showlegend=False)
-    st.plotly_chart(fig_trimestre, use_container_width=True)
+    st.plotly_chart(fig_trimestre, width='stretch')
 
 st.markdown("---")
 
@@ -211,20 +221,31 @@ with col_empresa1:
         color_discrete_sequence=px.colors.qualitative.Set3
     )
     fig_empresas.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_empresas, use_container_width=True)
+    st.plotly_chart(fig_empresas, width='stretch')
 
 with col_empresa2:
-    # Distribución por ruta
-    servicios_por_ruta = df_filtrado['COD RUTA'].value_counts().rename_axis('COD RUTA').reset_index(name='Cantidad')
+    # Mantener legible la distribución al agrupar las rutas menos frecuentes.
+    conteo_rutas = df_filtrado['COD RUTA'].value_counts()
+    servicios_por_ruta = conteo_rutas.head(10).rename_axis('COD RUTA').reset_index(name='Cantidad')
+    otras_rutas = int(conteo_rutas.iloc[10:].sum())
+    if otras_rutas:
+        servicios_por_ruta = pd.concat([
+            servicios_por_ruta,
+            pd.DataFrame([{'COD RUTA': 'Otras rutas', 'Cantidad': otras_rutas}])
+        ], ignore_index=True)
     
-    fig_ruta_empresa = px.pie(
+    fig_ruta_empresa = px.bar(
         servicios_por_ruta,
-        values='Cantidad',
-        names='COD RUTA',
-        title='Distribución por Ruta',
+        x='Cantidad',
+        y='COD RUTA',
+        orientation='h',
+        title='Distribución por Ruta (Top 10 + otras)',
+        labels={'COD RUTA': 'Código de Ruta', 'Cantidad': 'Servicios'},
+        color='COD RUTA',
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    st.plotly_chart(fig_ruta_empresa, use_container_width=True)
+    fig_ruta_empresa.update_layout(yaxis={'categoryorder': 'total ascending'}, showlegend=False)
+    st.plotly_chart(fig_ruta_empresa, width='stretch')
 
 st.markdown("---")
 
@@ -245,7 +266,7 @@ fig_rutas = px.bar(
     color_discrete_sequence=px.colors.qualitative.Set2,
     hover_data=['RUTA']
 )
-st.plotly_chart(fig_rutas, use_container_width=True)
+st.plotly_chart(fig_rutas, width='stretch')
 
 st.markdown("---")
 
@@ -255,22 +276,24 @@ st.header("💡 Análisis de Oportunidades")
 col_oportunidad1, col_oportunidad2 = st.columns(2)
 
 with col_oportunidad1:
-    # Oportunidades por empresa y tipo de vehículo
+    # Ranking de combinaciones empresa y tipo de vehículo.
     oportunidades = df_filtrado.groupby(['EMPRESAS', 'TIPO DE VEHICULO']).size().reset_index(name='Cantidad')
-    oportunidades = oportunidades.sort_values('Cantidad', ascending=False).head(15)
+    oportunidades = oportunidades.sort_values('Cantidad', ascending=False).head(10)
+    oportunidades['Oportunidad'] = oportunidades['EMPRESAS'].astype(str) + ' - ' + oportunidades['TIPO DE VEHICULO'].astype(str)
     
     fig_oportunidades = px.bar(
         oportunidades,
-        x='EMPRESAS',
-        y='Cantidad',
+        x='Cantidad',
+        y='Oportunidad',
+        orientation='h',
         color='TIPO DE VEHICULO',
-        title='Top 15 Oportunidades (Empresa + Tipo Vehículo)',
-        labels={'EMPRESAS': 'Empresa', 'Cantidad': 'Cantidad de Servicios', 'TIPO DE VEHICULO': 'Tipo de Vehículo'},
-        barmode='stack',
+        title='Top 10 Combinaciones Empresa y Vehículo',
+        labels={'Oportunidad': 'Empresa y tipo de vehículo', 'Cantidad': 'Servicios', 'TIPO DE VEHICULO': 'Tipo de vehículo'},
+        hover_data=['EMPRESAS', 'TIPO DE VEHICULO'],
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    fig_oportunidades.update_layout(xaxis_tickangle=-45)
-    st.plotly_chart(fig_oportunidades, use_container_width=True)
+    fig_oportunidades.update_layout(yaxis={'categoryorder': 'total ascending'})
+    st.plotly_chart(fig_oportunidades, width='stretch')
 
 with col_oportunidad2:
     # Barras horizontales: Empresas vs Meses
@@ -290,7 +313,7 @@ with col_oportunidad2:
         barmode='stack',
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    st.plotly_chart(fig_empresa_mes, use_container_width=True)
+    st.plotly_chart(fig_empresa_mes, width='stretch')
 
 st.markdown("---")
 
@@ -318,7 +341,7 @@ with tab1:
     
     st.dataframe(
         resumen_cruces[['EMPRESAS', 'COD RUTA', 'RUTA', 'MATERIAL PLAN', 'Cantidad']].head(20),
-        use_container_width=True
+        width='stretch'
     )
     
     # Gráfico de barras horizontales para las combinaciones
@@ -339,7 +362,7 @@ with tab1:
         color_discrete_sequence=px.colors.qualitative.Set3
     )
     fig_combinaciones.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_combinaciones, use_container_width=True)
+    st.plotly_chart(fig_combinaciones, width='stretch')
 
 # Tab 2: Empresa × Ruta
 with tab2:
@@ -366,13 +389,13 @@ with tab2:
         barmode='stack',
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    st.plotly_chart(fig_empresa_ruta, use_container_width=True)
+    st.plotly_chart(fig_empresa_ruta, width='stretch')
     
     # Tabla de detalle
     st.subheader("Detalle de Servicios por Empresa y Ruta")
     detalle_empresa_ruta = df_filtrado.groupby(['EMPRESAS', 'COD RUTA', 'RUTA']).size().reset_index(name='Total Servicios')
     detalle_empresa_ruta = detalle_empresa_ruta.sort_values('Total Servicios', ascending=False).head(20)
-    st.dataframe(detalle_empresa_ruta, use_container_width=True)
+    st.dataframe(detalle_empresa_ruta, width='stretch')
 
 # Tab 3: Empresa × Material
 with tab3:
@@ -395,7 +418,7 @@ with tab3:
         barmode='stack',
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    st.plotly_chart(fig_empresa_material, use_container_width=True)
+    st.plotly_chart(fig_empresa_material, width='stretch')
 
 # Tab 4: Ruta × Material
 with tab4:
@@ -418,7 +441,7 @@ with tab4:
         barmode='stack',
         color_discrete_sequence=px.colors.qualitative.Set3
     )
-    st.plotly_chart(fig_ruta_material, use_container_width=True)
+    st.plotly_chart(fig_ruta_material, width='stretch')
 
 st.markdown("---")
 
@@ -441,7 +464,7 @@ col_opp1, col_opp2 = st.columns(2)
 
 with col_opp1:
     st.markdown("**Empresas con mayor diversidad de rutas afectadas**")
-    st.dataframe(oportunidad_multi_ruta, use_container_width=True)
+    st.dataframe(oportunidad_multi_ruta, width='stretch')
 
 with col_opp2:
     # Tasa de concentración
@@ -459,7 +482,7 @@ with col_opp2:
         color_discrete_sequence=px.colors.qualitative.Set3
     )
     fig_concentracion.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_concentracion, use_container_width=True)
+    st.plotly_chart(fig_concentracion, width='stretch', key='concentracion_por_empresa')
 
 st.markdown("---")
 
@@ -476,8 +499,8 @@ columnas_seleccionadas = st.multiselect(
 
 # Mostrar tabla
 st.dataframe(
-    df_filtrado[columnas_seleccionadas].sort_values('FECHA', ascending=False),
-    use_container_width=True,
+    df_filtrado.sort_values('FECHA', ascending=False)[columnas_seleccionadas],
+    width='stretch',
     height=400
 )
 
@@ -526,6 +549,7 @@ with tab_obs:
     # Mes con más servicios
     top_mes = df_filtrado['Nombre del mes'].value_counts().index[0]
     top_mes_count = df_filtrado['Nombre del mes'].value_counts().iloc[0]
+    concentracion_rutas = df_filtrado['COD RUTA'].value_counts().head(5).sum() / total_servicios * 100
     
     st.markdown(f"""
     ### 📊 Resumen Ejecutivo
@@ -546,10 +570,12 @@ with tab_obs:
     3. **Mes con mayor incidencia:** `{top_mes}` con **{top_mes_count}** servicios
     
     4. **Concentración:** El top 5 de empresas concentra el **{df_filtrado['EMPRESAS'].value_counts().head(5).sum() / total_servicios * 100:.1f}%** de los servicios no cumplidos
+
+    5. **Concentración por ruta:** Las 5 rutas más frecuentes reúnen el **{concentracion_rutas:.1f}%** de los servicios no cumplidos
     """)
     
     st.markdown("---")
-    
+    st.plotly_chart(fig_concentracion, width='stretch')
     st.markdown("""
     ### ⚠️ Contexto Nacional Relevante
     
