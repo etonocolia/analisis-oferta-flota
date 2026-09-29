@@ -41,6 +41,17 @@ if columnas_faltantes:
     st.error(f"Faltan columnas requeridas en el Excel: {', '.join(columnas_faltantes)}")
     st.stop()
 
+# Catálogo de rutas: traduce el código de ruta a su descripción
+@st.cache_data
+def construir_catalogo_rutas(datos):
+    catalogo = (
+        datos[['COD RUTA', 'RUTA']]
+        .drop_duplicates()
+        .sort_values('COD RUTA')
+        .reset_index(drop=True)
+    )
+    return catalogo.rename(columns={'COD RUTA': 'Código de Ruta', 'RUTA': 'Descripción de la Ruta'})
+
 # Sidebar con filtros
 st.sidebar.header("🔍 Filtros")
 
@@ -113,6 +124,10 @@ df_filtrado = df[
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"**Registros filtrados:** {len(df_filtrado)}")
+
+with st.sidebar.expander("📖 Catálogo de rutas"):
+    st.caption("Código de cada ruta y su descripción.")
+    st.dataframe(construir_catalogo_rutas(df), width='stretch', hide_index=True)
 
 if df_filtrado.empty:
     st.warning("No hay registros para los filtros seleccionados. Ajusta los filtros para ver el análisis.")
@@ -267,6 +282,25 @@ fig_rutas = px.bar(
     hover_data=['RUTA']
 )
 st.plotly_chart(fig_rutas, width='stretch')
+
+# Catálogo de rutas: referencia para interpretar los códigos de los gráficos y tablas
+st.subheader("📖 Catálogo de Rutas")
+st.caption("Usa la búsqueda de la tabla para traducir cualquier código de ruta que aparezca en los gráficos.")
+
+catalogo_rutas = construir_catalogo_rutas(df)
+servicios_por_codigo = (
+    df_filtrado.groupby('COD RUTA').size()
+    .reindex(catalogo_rutas['Código de Ruta'], fill_value=0)
+    .to_numpy()
+)
+catalogo_rutas['Servicios no Cumplidos'] = servicios_por_codigo
+
+st.dataframe(
+    catalogo_rutas,
+    width='stretch',
+    height=400,
+    hide_index=True
+)
 
 st.markdown("---")
 
