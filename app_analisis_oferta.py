@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+from io import BytesIO
 
 # Configuración de la página
 st.set_page_config(
@@ -15,21 +16,29 @@ st.set_page_config(
 st.title("📊 Análisis de Oferta de Flota No Cubierta")
 st.markdown("---")
 
-# Carga de datos con cache para mejor rendimiento
-@st.cache_data
-def cargar_datos():
-    df = pd.read_excel(
-        'OfertaFlotaNoCubierta.xlsx',
-        sheet_name='ConsolidadoNoCumplidos'
+with st.sidebar:
+    st.header("Datos y filtros")
+    st.subheader("Fuente de datos", divider="gray")
+    archivo_excel = st.file_uploader(
+        "Buscar archivo Excel",
+        type=["xlsx"],
+        help="Selecciona un archivo .xlsx de tu equipo. Debe contener la hoja ConsolidadoNoCumplidos."
     )
-    return df
+    nombre_fuente = archivo_excel.name if archivo_excel else "OfertaFlotaNoCubierta.xlsx"
+    st.caption(f"Fuente activa: {nombre_fuente}")
+
+# Carga cacheada: usa el archivo elegido o el libro predeterminado del proyecto.
+@st.cache_data
+def cargar_datos(contenido_excel: bytes | None):
+    origen = BytesIO(contenido_excel) if contenido_excel is not None else 'OfertaFlotaNoCubierta.xlsx'
+    return pd.read_excel(origen, sheet_name='ConsolidadoNoCumplidos')
 
 # Cargar datos
 try:
-    df = cargar_datos()
+    df = cargar_datos(archivo_excel.getvalue() if archivo_excel else None)
     st.caption(f"Datos disponibles: {len(df)} registros")
 except Exception as e:
-    st.error(f"Error al cargar datos: {e}")
+    st.error(f"No se pudo cargar '{nombre_fuente}'. Verifica que sea un Excel válido con la hoja ConsolidadoNoCumplidos. Detalle: {e}")
     st.stop()
 
 columnas_requeridas = [
@@ -52,63 +61,66 @@ def construir_catalogo_rutas(datos):
     )
     return catalogo.rename(columns={'COD RUTA': 'Código de Ruta', 'RUTA': 'Descripción de la Ruta'})
 
-# Sidebar con filtros
-st.sidebar.header("🔍 Filtros")
+# Filtros del dashboard
+st.sidebar.subheader("Período", divider="gray")
 
-# Filtro por Year
 anios = sorted(df['Year'].unique())
 anio_seleccionado = st.sidebar.multiselect(
     "Año",
     options=anios,
-    default=anios
+    default=anios,
+    placeholder="Buscar o seleccionar años",
+    help="Puedes seleccionar uno o varios años."
 )
 
-# Filtro por Trimestre
 trimestres = sorted(df['Trimestre'].unique())
 trimestre_seleccionado = st.sidebar.multiselect(
     "Trimestre",
     options=trimestres,
-    default=trimestres
+    default=trimestres,
+    placeholder="Buscar o seleccionar trimestres"
 )
 
-# Filtro por Mes
 meses = df[['Mes', 'Nombre del mes']].drop_duplicates().sort_values('Mes')
 mes_seleccionado = st.sidebar.multiselect(
     "Mes",
     options=meses['Nombre del mes'].tolist(),
-    default=meses['Nombre del mes'].tolist()
+    default=meses['Nombre del mes'].tolist(),
+    placeholder="Buscar o seleccionar meses"
 )
 
-# Filtro por Empresa (TODAS las empresas)
+st.sidebar.subheader("Operación", divider="gray")
+
 todas_empresas = sorted(df['EMPRESAS'].unique().tolist())
 empresa_seleccionado = st.sidebar.multiselect(
     "Empresa",
     options=todas_empresas,
-    default=todas_empresas
+    default=todas_empresas,
+    placeholder="Buscar empresa"
 )
 
-# Filtro por Ruta (TODAS las rutas)
 todas_rutas = sorted(df['COD RUTA'].unique().tolist())
 ruta_seleccionado = st.sidebar.multiselect(
     "Ruta",
     options=todas_rutas,
-    default=todas_rutas
+    default=todas_rutas,
+    placeholder="Buscar código de ruta"
 )
 
-# Filtro por Material (TODOS los materiales)
 todos_materiales = sorted(df['MATERIAL PLAN'].unique().tolist())
 material_seleccionado = st.sidebar.multiselect(
     "Material",
     options=todos_materiales,
-    default=todos_materiales
+    default=todos_materiales,
+    placeholder="Buscar material"
 )
 
-# Filtro por Tipo de Vehículo (último filtro)
 tipos_vehiculo = sorted(df['TIPO DE VEHICULO'].unique().tolist())
 tipo_vehiculo_seleccionado = st.sidebar.multiselect(
     "Tipo de Vehículo",
     options=tipos_vehiculo,
-    default=tipos_vehiculo
+    default=tipos_vehiculo,
+    placeholder="Buscar tipo de vehículo"
 )
 
 # Aplicar filtros
@@ -123,7 +135,7 @@ df_filtrado = df[
 ].copy()
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Registros filtrados:** {len(df_filtrado)}")
+st.sidebar.metric("Registros coincidentes", f"{len(df_filtrado):,}")
 
 with st.sidebar.expander("📖 Catálogo de rutas"):
     st.caption("Código de cada ruta y su descripción.")
